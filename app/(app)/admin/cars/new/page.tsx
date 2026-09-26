@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { CarForm } from "@/components/CarForm";
-import { requireAdmin } from "@/lib/session";
+import { requireAdminPage } from "@/lib/session";
 
 export default async function NewCarPage() {
-  await requireAdmin();
+  await requireAdminPage();
 
   return (
     <div className="space-y-4">

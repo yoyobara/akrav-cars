@@ -4,12 +4,12 @@ import { notFound } from "next/navigation";
 import { CarForm } from "@/components/CarForm";
 import { db } from "@/lib/db";
 import { cars } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/session";
+import { requireAdminPage } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditCarPage({ params }: PageProps<"/admin/cars/[id]">) {
-  await requireAdmin();
+  await requireAdminPage();
   const { id } = await params;
 
   const car = await db.query.cars.findFirst({ where: eq(cars.id, id) });

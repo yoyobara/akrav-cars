@@ -17,6 +17,8 @@ export type ErrorCode =
   | "not_startable"
   | "not_yours"
   | "already_ended"
+  | "already_decided"
+  | "request_expired"
   | "parking_required"
   | "invite_invalid";
 
@@ -31,6 +33,8 @@ const statusByCode: Record<ErrorCode, number> = {
   not_startable: 409,
   not_yours: 403,
   already_ended: 409,
+  already_decided: 409,
+  request_expired: 409,
   parking_required: 422,
   invite_invalid: 410,
 };
@@ -49,10 +53,25 @@ export class AppError extends Error {
 
 type PgError = { code?: string; constraint_name?: string; constraint?: string };
 
+/**
+ * Finds the driver error carrying the constraint name. Drizzle wraps whatever
+ * the driver threw in a DrizzleQueryError and hangs the real PostgresError off
+ * `cause`, so reading the top-level object alone would turn every violation of
+ * a SPEC §7 invariant into an opaque 500.
+ */
+function pgCause(err: unknown): PgError | null {
+  for (let cur = err, depth = 0; cur && depth < 5; depth++) {
+    const pg = cur as PgError;
+    if (pg.code === "23505" || pg.code === "23P01") return pg;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
 /** Turns a violation of a SPEC §7 invariant into the same shape as an AppError. */
 function fromPostgres(err: unknown): AppError | null {
-  const pg = err as PgError;
-  if (pg?.code !== "23505" && pg?.code !== "23P01") return null;
+  const pg = pgCause(err);
+  if (!pg) return null;
   const constraint = pg.constraint_name ?? pg.constraint ?? "";
 
   if (constraint === activeTripIndexName) {
@@ -79,8 +98,19 @@ function fromZod(err: unknown): AppError | null {
   return new AppError("invalid_input", field ? `${field}: ${message}` : message);
 }
 
+/**
+ * The same normalisation `errorResponse` does, without building a response —
+ * bulk-approve (SPEC §5.5) needs the sentence for each request it skipped, and
+ * a lost race against the §7 exclusion constraint arrives as a Postgres error
+ * rather than an AppError.
+ */
+export function asAppError(err: unknown): AppError | null {
+  if (err instanceof AppError) return err;
+  return fromZod(err) ?? fromPostgres(err);
+}
+
 export function errorResponse(err: unknown): NextResponse {
-  const app = err instanceof AppError ? err : (fromZod(err) ?? fromPostgres(err));
+  const app = asAppError(err);
 
   if (!app) {
     console.error(err);

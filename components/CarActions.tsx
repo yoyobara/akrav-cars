@@ -28,13 +28,20 @@ export function CarActions({
       );
     }
 
-    // An admin can close a trip someone forgot about, giving the location
-    // themselves (SPEC §4).
-    return isAdmin ? (
-      <ButtonLink href={`/cars/${car.id}/end-trip`} variant="danger" className="w-full">
-        End {active.user.name}’s trip
-      </ButtonLink>
-    ) : null;
+    return (
+      <div className="space-y-2">
+        <ButtonLink href={`/request?car=${car.id}`} className="w-full">
+          Request this car
+        </ButtonLink>
+        {/* An admin can close a trip someone forgot about, giving the location
+            themselves (SPEC §4). */}
+        {isAdmin && (
+          <ButtonLink href={`/cars/${car.id}/end-trip`} variant="danger" className="w-full">
+            End {active.user.name}’s trip
+          </ButtonLink>
+        )}
+      </div>
+    );
   }
 
   const mineNext = upcoming.find((b) => b.userId === userId);
@@ -43,15 +50,23 @@ export function CarActions({
     return openYet ? (
       <StartTripButton bookingId={mineNext.id} />
     ) : (
-      <p className="rounded-xl bg-surface-muted px-3 py-2.5 text-center text-sm text-muted">
-        Yours from {formatWhen(mineNext.startAt, now)}
-      </p>
+      <div className="space-y-2">
+        <p className="rounded-xl bg-surface-muted px-3 py-2.5 text-center text-sm text-muted">
+          Yours from {formatWhen(mineNext.startAt, now)}
+        </p>
+        <ButtonLink href={`/request?car=${car.id}`} variant="ghost" className="w-full">
+          Request another slot
+        </ButtonLink>
+      </div>
     );
   }
 
   return (
     <div className="space-y-2">
       <TakeCarButton carId={car.id} />
+      <ButtonLink href={`/request?car=${car.id}`} variant="secondary" className="w-full">
+        Request it for later
+      </ButtonLink>
       <ButtonLink href={`/cars/${car.id}/park`} variant="ghost" className="w-full">
         Just moved it? Report where it is
       </ButtonLink>

@@ -32,6 +32,15 @@ export const createBookingInput = z.object({
 
 export const endBookingInput = z.object({ parking: parkingInput });
 
+/** An admin may say why they turned a request down (SPEC §5.5). */
+export const rejectBookingInput = z.object({
+  reason: z.string().trim().max(300).nullish(),
+});
+
+export const approveManyInput = z.object({
+  ids: z.array(z.uuid()).min(1).max(50),
+});
+
 export const carInput = z.object({
   nickname: z.string().trim().min(1).max(60),
   make: z.string().trim().max(60).nullish(),

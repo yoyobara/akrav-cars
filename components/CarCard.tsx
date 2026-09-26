@@ -54,14 +54,25 @@ function Action({ view, userId, now }: { view: CarView; userId: string; now: Dat
   const { car, status, active, next } = view;
 
   if (status === "in_use") {
-    return active!.userId === userId ? (
-      <ButtonLink href={`/cars/${car.id}/end-trip`} className="w-full">
-        End trip &amp; report parking
-      </ButtonLink>
-    ) : (
-      <ButtonLink href={`/cars/${car.id}`} variant="secondary" className="w-full">
-        See details
-      </ButtonLink>
+    if (active!.userId === userId) {
+      return (
+        <ButtonLink href={`/cars/${car.id}/end-trip`} className="w-full">
+          End trip &amp; report parking
+        </ButtonLink>
+      );
+    }
+    // SPEC §5.1 puts "Ask X for it" here, but asking is a notification and
+    // notifications are M3, so the useful action while someone else has it is
+    // to book it for later.
+    return (
+      <div className="space-y-2">
+        <ButtonLink href={`/request?car=${car.id}`} variant="secondary" className="w-full">
+          Request this car
+        </ButtonLink>
+        <ButtonLink href={`/cars/${car.id}`} variant="ghost" className="w-full">
+          See details
+        </ButtonLink>
+      </div>
     );
   }
 
@@ -82,6 +93,9 @@ function Action({ view, userId, now }: { view: CarView; userId: string; now: Dat
         </p>
       )}
       <TakeCarButton carId={car.id} />
+      <ButtonLink href={`/request?car=${car.id}`} variant="ghost" className="w-full">
+        Book it for later
+      </ButtonLink>
     </div>
   );
 }

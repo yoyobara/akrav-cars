@@ -1,7 +1,8 @@
 import { CarCard } from "@/components/CarCard";
+import { MyRequests } from "@/components/MyRequests";
 import { TodayStrip } from "@/components/TodayStrip";
 import { ButtonLink, Empty } from "@/components/ui";
-import { getGarage, getSchedule } from "@/lib/queries";
+import { getGarage, getMyBookings, getSchedule } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 
 /** Always current: the whole point is to answer "can I use a car right now". */
@@ -11,9 +12,10 @@ export default async function GaragePage() {
   const user = await requireUser();
   const now = new Date();
 
-  const [garage, schedule] = await Promise.all([
+  const [garage, schedule, mine] = await Promise.all([
     getGarage(now),
     getSchedule(now, new Date(now.getTime() + 12 * 3_600_000)),
+    getMyBookings(user.id, now),
   ]);
 
   if (garage.length === 0) {
@@ -37,6 +39,20 @@ export default async function GaragePage() {
           <CarCard key={view.car.id} view={view} userId={user.id} now={now} />
         ))}
       </div>
+
+      <MyRequests
+        rows={mine.map((b) => ({
+          id: b.id,
+          carId: b.carId,
+          carName: b.car.nickname,
+          status: b.status,
+          startAt: b.startAt,
+          endAt: b.endAt,
+          note: b.note,
+          decisionNote: b.decisionNote,
+        }))}
+        now={now}
+      />
 
       <TodayStrip cars={garage.map((v) => v.car)} bookings={schedule} now={now} />
     </div>

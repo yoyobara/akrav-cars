@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users, type User } from "@/lib/db/schema";
@@ -30,6 +31,19 @@ export async function requireAdmin(): Promise<User> {
   if (user.role !== "admin") {
     throw new AppError("forbidden", "Only an admin can do that.");
   }
+  return user;
+}
+
+/**
+ * The same check for a *screen* rather than an endpoint. `requireAdmin` throws,
+ * which an API route turns into a 403 with a sentence — but on a page there is
+ * no error boundary to catch it, so a member who follows an admin link gets a
+ * bare 500. Send them back to the garage instead.
+ */
+export async function requireAdminPage(): Promise<User> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/signin");
+  if (user.role !== "admin") redirect("/");
   return user;
 }
 

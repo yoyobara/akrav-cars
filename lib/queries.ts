@@ -213,3 +213,114 @@ export async function recentParkingNotes(carId: string, limit = 3): Promise<stri
   }
   return [...seen];
 }
+
+/* -------------------------------------------------------------------------- *
+ * M2 — the coordination layer.
+ * -------------------------------------------------------------------------- */
+
+export type CarRef = { id: string; nickname: string };
+
+const carRef = { id: cars.id, nickname: cars.nickname };
+
+/** How long a decided request keeps showing on the requester's garage screen. */
+const DECISION_VISIBLE_MS = 24 * 3_600_000;
+
+export type PendingRequest = BookingView & {
+  car: CarRef;
+  createdAt: Date;
+  /** Approved bookings for the same car this request would clash with. */
+  conflicts: BookingView[];
+  /** Its window has already passed, so approving it could do nothing. */
+  expired: boolean;
+};
+
+/**
+ * The admin inbox queue: every pending request, newest first (SPEC §5.5).
+ *
+ * The clash warning is worked out here rather than per row, so the whole queue
+ * costs two queries no matter how long it is. It describes the request against
+ * *approved* bookings only — overlapping pending requests are normal, and are
+ * exactly what the admin is here to resolve (SPEC §4).
+ */
+export async function getPendingRequests(now = new Date()): Promise<PendingRequest[]> {
+  const rows = await db
+    .select({ ...bookingColumns, car: carRef, createdAt: bookings.createdAt })
+    .from(bookings)
+    .innerJoin(users, eq(users.id, bookings.userId))
+    .innerJoin(cars, eq(cars.id, bookings.carId))
+    .where(eq(bookings.status, "pending"))
+    .orderBy(desc(bookings.createdAt));
+
+  if (rows.length === 0) return [];
+
+  const carIds = [...new Set(rows.map((r) => r.carId))];
+  const from = new Date(Math.min(...rows.map((r) => r.startAt.getTime())));
+  const to = new Date(Math.max(...rows.map((r) => r.endAt.getTime())));
+
+  const approved = await db
+    .select(bookingColumns)
+    .from(bookings)
+    .innerJoin(users, eq(users.id, bookings.userId))
+    .where(
+      and(
+        inArray(bookings.carId, carIds),
+        eq(bookings.status, "approved"),
+        lt(bookings.startAt, to),
+        gt(bookings.endAt, from),
+      ),
+    )
+    .orderBy(asc(bookings.startAt));
+
+  return rows.map((row) => ({
+    ...row,
+    conflicts: approved.filter(
+      (a) => a.carId === row.carId && a.startAt < row.endAt && a.endAt > row.startAt,
+    ),
+    expired: row.endAt <= now,
+  }));
+}
+
+/** The number on the admin badge (SPEC §5.1). */
+export async function pendingRequestCount(): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(bookings)
+    .where(eq(bookings.status, "pending"));
+
+  return row?.count ?? 0;
+}
+
+export type MyBooking = BookingView & { car: CarRef; decisionNote: string | null };
+
+/**
+ * What I have asked for: requests still waiting, slots already approved and
+ * still ahead of me, and anything decided against me in the last day.
+ *
+ * That last part is not in SPEC §5.5 — it is there because M2 ships before the
+ * push notifications of M3, and without it a member whose request was rejected
+ * would have no way at all of finding out.
+ */
+export async function getMyBookings(userId: string, now = new Date()): Promise<MyBooking[]> {
+  return db
+    .select({ ...bookingColumns, car: carRef, decisionNote: bookings.decisionNote })
+    .from(bookings)
+    .innerJoin(users, eq(users.id, bookings.userId))
+    .innerJoin(cars, eq(cars.id, bookings.carId))
+    .where(
+      and(
+        eq(bookings.userId, userId),
+        isNull(bookings.actualStartAt),
+        or(
+          and(
+            inArray(bookings.status, ["pending", "approved"]),
+            gt(bookings.endAt, now),
+          ),
+          and(
+            eq(bookings.status, "rejected"),
+            gt(bookings.decidedAt, new Date(now.getTime() - DECISION_VISIBLE_MS)),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(bookings.startAt));
+}

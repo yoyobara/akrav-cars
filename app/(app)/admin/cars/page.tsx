@@ -3,12 +3,12 @@ import Link from "next/link";
 import { ButtonLink, Card, Empty } from "@/components/ui";
 import { db } from "@/lib/db";
 import { cars } from "@/lib/db/schema";
-import { requireAdmin } from "@/lib/session";
+import { requireAdminPage } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminCarsPage() {
-  await requireAdmin();
+  await requireAdminPage();
   const all = await db.select().from(cars).orderBy(asc(cars.nickname));
 
   return (
