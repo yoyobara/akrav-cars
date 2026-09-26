@@ -1,0 +1,87 @@
+import Link from "next/link";
+import { StartTripButton } from "@/components/StartTripButton";
+import { StatusPill } from "@/components/StatusPill";
+import { TakeCarButton } from "@/components/TakeCarButton";
+import { ParkingLine } from "@/components/ParkingLine";
+import { ButtonLink, Card } from "@/components/ui";
+import type { CarView } from "@/lib/queries";
+import { START_GRACE_BEFORE_MIN } from "@/lib/constants";
+import { formatRelative, formatWhen } from "@/lib/time";
+
+/** One card per car — the screen that answers everything (SPEC §5.1). */
+export function CarCard({ view, userId, now }: { view: CarView; userId: string; now: Date }) {
+  const { car, status, active, next, parking } = view;
+  const mine = active?.userId === userId;
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <Link href={`/cars/${car.id}`} className="text-lg font-bold">
+          {car.nickname}
+        </Link>
+        <StatusPill
+          status={status}
+          label={
+            status === "in_use"
+              ? mine
+                ? "You have it"
+                : `${active!.user.name} has it`
+              : undefined
+          }
+        />
+      </div>
+
+      {active && (
+        <p className="text-sm text-muted">
+          back ~{formatWhen(active.endAt, now)} ({formatRelative(active.endAt, now)})
+        </p>
+      )}
+
+      {!active && next && (
+        <p className="text-sm text-reserved">
+          {next.userId === userId ? "Yours" : `${next.user.name}’s`} from {formatWhen(next.startAt, now)}
+        </p>
+      )}
+
+      <ParkingLine parking={parking} prefix={status === "in_use" ? "last seen: " : ""} />
+
+      <Action view={view} userId={userId} now={now} />
+    </Card>
+  );
+}
+
+function Action({ view, userId, now }: { view: CarView; userId: string; now: Date }) {
+  const { car, status, active, next } = view;
+
+  if (status === "in_use") {
+    return active!.userId === userId ? (
+      <ButtonLink href={`/cars/${car.id}/end-trip`} className="w-full">
+        End trip &amp; report parking
+      </ButtonLink>
+    ) : (
+      <ButtonLink href={`/cars/${car.id}`} variant="secondary" className="w-full">
+        See details
+      </ButtonLink>
+    );
+  }
+
+  // Reserved for me and within the grace window: one tap to take it.
+  const startable =
+    next?.userId === userId &&
+    next.startAt.getTime() - START_GRACE_BEFORE_MIN * 60_000 <= now.getTime();
+  if (startable) return <StartTripButton bookingId={next!.id} />;
+
+  // Reserved for someone else: still takeable for a trip that fits in the gap.
+  // A preset that would run into their booking is refused by the server with a
+  // sentence naming who it clashes with.
+  return (
+    <div className="space-y-2">
+      {status === "reserved" && (
+        <p className="text-sm text-muted">
+          {next!.user.name} needs it from {formatWhen(next!.startAt, now)}.
+        </p>
+      )}
+      <TakeCarButton carId={car.id} />
+    </div>
+  );
+}

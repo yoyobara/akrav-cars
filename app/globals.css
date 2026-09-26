@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/*
+ * Mobile first: the layout is designed for a 390 px phone held one-handed and
+ * simply widens on desktop (SPEC §10). Spacing uses logical properties
+ * throughout so switching `dir` to rtl for Hebrew needs no layout changes.
+ */
+
+:root {
+  --background: #f4f5f7;
+  --surface: #ffffff;
+  --surface-muted: #eceef1;
+  --foreground: #14181f;
+  --muted: #5c6673;
+  --border: #dfe3e8;
+
+  --available: #16a34a;
+  --reserved: #d97706;
+  --in-use: #dc2626;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d1117;
+    --surface: #161b22;
+    --surface-muted: #1f2630;
+    --foreground: #e8edf3;
+    --muted: #97a3b2;
+    --border: #2a323d;
+
+    --available: #34d399;
+    --reserved: #fbbf24;
+    --in-use: #f87171;
+    --accent: #60a5fa;
+    --accent-contrast: #0d1117;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-available: var(--available);
+  --color-reserved: var(--reserved);
+  --color-in-use: var(--in-use);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --font-sans: var(--font-geist-sans);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  /* The end-trip screen is used one-handed, often in a hurry. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Leaflet renders its own DOM; these are the only overrides it needs. */
+.leaflet-container {
+  background: var(--surface-muted);
+  font: inherit;
+  z-index: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* OSM tiles are light; take the edge off them at night. */
+  .leaflet-tile-pane {
+    filter: brightness(0.75) contrast(1.05);
+  }
+}
