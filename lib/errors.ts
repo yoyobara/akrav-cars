@@ -19,6 +19,7 @@ export type ErrorCode =
   | "already_ended"
   | "already_decided"
   | "request_expired"
+  | "not_insured"
   | "parking_required"
   | "invite_invalid";
 
@@ -35,6 +36,7 @@ const statusByCode: Record<ErrorCode, number> = {
   already_ended: 409,
   already_decided: 409,
   request_expired: 409,
+  not_insured: 403,
   parking_required: 422,
   invite_invalid: 410,
 };

@@ -58,6 +58,15 @@ docker run -d --name akrav-pg -e POSTGRES_PASSWORD=akrav -e POSTGRES_DB=akrav \
   the header carries the count from wherever you are.
 - **Your requests** — the garage shows what you have asked for and whether it is still
   waiting, approved or rejected (with the admin's reason), and lets you cancel.
+- **Who can drive which car** — each car's insurance either covers any driver or names
+  its drivers; an admin sets that on the car's admin page, and records **temporary
+  insurance** (person, from, until, note) for anyone else. A booking is only approved,
+  and a trip only started, when the driver is covered for the whole window. Someone not
+  covered can still request the car: it waits in the inbox marked *not insured*, and
+  **Add insurance & approve** records temporary insurance for exactly that window in the
+  same transaction as the approval. The garage, car screen and request sheet say up front
+  when you are not on a car's insurance, and the car's admin page lists any approved
+  booking that has lost its cover.
 
 ## Decisions taken while building
 
@@ -106,6 +115,25 @@ docker run -d --name akrav-pg -e POSTGRES_PASSWORD=akrav -e POSTGRES_DB=akrav \
   `requireAdminPage`, which redirects to the garage; API routes keep throwing, which is
   what produces their 403 with a sentence.
 
+- **Insurance is a rule on bookings, not a feature for keeping policies.** SPEC §2 keeps
+  insurance *deadlines* out of scope; this is narrower — who may drive which car — and
+  it is enforced where the lifecycle already decides things (`lib/bookings.ts`). The
+  app records insurance; it does not buy it, which is why approving with insurance asks
+  the admin to confirm they have actually arranged it.
+- **Not insured means the O1 shortcut does not apply.** A member's claim on a free car is
+  auto-approved only if they are covered; otherwise it becomes a pending request. An
+  admin is not exempt either — their own booking is refused until they are covered.
+- **Coverage is checked again when a trip starts**, not only at approval, because
+  insurance can be revoked or a driver taken off a policy in between.
+- **Existing cars were migrated as "any driver"**, so nothing that worked before
+  `0003_insurance.sql` stops working; a car added afterwards starts with nobody named,
+  and adding one lands on its admin page to say who can drive it.
+- **Temporary insurance is revoked, not deleted**, so who was insured when stays on
+  record (§10). Back-to-back windows count as continuous cover.
+- **Enforced in the application, not the database.** Unlike the §7 invariants, "covered
+  for the whole window" spans three tables and a union of time ranges; it is checked
+  inside the same transaction as the approval or start.
+
 ## Not built yet
 
 M3 (web push, the notification matrix, iOS add-to-home-screen onboarding) ·
@@ -131,6 +159,8 @@ app/signin, /invite   the two screens reachable signed out
 app/api/              the endpoints from SPEC §8
 lib/db/               Drizzle schema and the SQL migrations
 lib/bookings.ts       the booking lifecycle: create, approve, reject, start, end, cancel
+lib/coverage.ts       is someone insured on a car for a window — shared with the client
+lib/insurance.ts      named drivers and temporary insurance: reads, writes, the check
 lib/status.ts         derived car status — never stored, so it cannot drift
 lib/queries.ts        the reads behind the garage, car detail and admin inbox
 lib/presets.ts        the quick presets from §5.1 and §5.3, shared by both sheets

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, ButtonLink, Card, ErrorNote, Field, inputClass } from "@/components/ui";
 import { post } from "@/lib/client";
+import { isCovered, type Coverage } from "@/lib/coverage";
 import { REQUEST_PRESETS, type Window } from "@/lib/presets";
 import { formatTime, formatWhen, fromPickerValue, toPickerValue } from "@/lib/time";
 
@@ -41,6 +42,7 @@ export function RequestForm({
   initialCarId,
   isAdmin,
   myId,
+  coverage,
   serverNow,
 }: {
   cars: CarRef[];
@@ -48,6 +50,8 @@ export function RequestForm({
   initialCarId?: string;
   isAdmin: boolean;
   myId: string;
+  /** My insurance on each car, by car id. */
+  coverage: Record<string, Coverage>;
   serverNow: Date;
 }) {
   const router = useRouter();
@@ -92,6 +96,8 @@ export function RequestForm({
 
   // Cheap enough to redo on every keystroke, and the React Compiler memoizes it.
   const hint = chosen ? describeConflicts(slots, carId, chosen, myId, now) : null;
+  const uninsured =
+    !!chosen && !!coverage[carId] && !isCovered(coverage[carId], chosen.startAt, chosen.endAt);
 
   const car = cars.find((c) => c.id === carId);
 
@@ -200,6 +206,13 @@ export function RequestForm({
       </Field>
 
       {hint && <Hint hint={hint} />}
+      {uninsured && (
+        <p className="rounded-xl bg-reserved/10 px-3 py-2 text-sm text-reserved">
+          {isAdmin
+            ? `You are not insured on ${car?.nickname ?? "this car"} for this window. Add temporary insurance on the car’s admin page first.`
+            : `You are not insured on ${car?.nickname ?? "this car"} for this window, so this waits for an admin, who adds temporary insurance when approving it.`}
+        </p>
+      )}
       <ErrorNote>{error}</ErrorNote>
 
       <Button type="submit" className="w-full" disabled={busy || !chosen}>
@@ -208,7 +221,8 @@ export function RequestForm({
 
       {!isAdmin && (
         <p className="text-center text-xs text-muted">
-          An admin approves requests. A car that is free right now is yours straight away.
+          An admin approves requests. A car that is free right now, and that you are insured on, is
+          yours straight away.
         </p>
       )}
     </form>

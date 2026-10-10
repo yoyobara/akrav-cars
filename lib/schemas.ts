@@ -68,3 +68,24 @@ export const claimInviteInput = z.object({
   name: z.string().trim().min(1).max(60),
   email: z.email().max(200),
 });
+
+/**
+ * `insure`: the admin has arranged temporary insurance for a requester who is
+ * not on the car's policy, and it should be recorded for the booking's window.
+ */
+export const approveBookingInput = z.object({
+  insure: z.boolean().optional(),
+});
+
+/** Who a car's policy covers: anyone, or the people named. */
+export const carDriversInput = z.object({
+  anyDriver: z.boolean(),
+  userIds: z.array(z.uuid()).max(50),
+});
+
+export const temporaryInsuranceInput = z.object({
+  userId: z.uuid(),
+  startAt: z.iso.datetime({ offset: true }).or(z.iso.datetime()),
+  endAt: z.iso.datetime({ offset: true }).or(z.iso.datetime()),
+  note: z.string().trim().max(300).nullish(),
+});

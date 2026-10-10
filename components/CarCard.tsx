@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InsuranceNote, insuredNow } from "@/components/InsuranceNote";
 import { StartTripButton } from "@/components/StartTripButton";
 import { StatusPill } from "@/components/StatusPill";
 import { TakeCarButton } from "@/components/TakeCarButton";
@@ -6,10 +7,22 @@ import { ParkingLine } from "@/components/ParkingLine";
 import { ButtonLink, Card } from "@/components/ui";
 import type { CarView } from "@/lib/queries";
 import { START_GRACE_BEFORE_MIN } from "@/lib/constants";
+import type { Coverage } from "@/lib/coverage";
 import { formatRelative, formatWhen } from "@/lib/time";
 
 /** One card per car — the screen that answers everything (SPEC §5.1). */
-export function CarCard({ view, userId, now }: { view: CarView; userId: string; now: Date }) {
+export function CarCard({
+  view,
+  userId,
+  coverage,
+  now,
+}: {
+  view: CarView;
+  userId: string;
+  /** The viewer's insurance on this car. */
+  coverage: Coverage;
+  now: Date;
+}) {
   const { car, status, active, next, parking } = view;
   const mine = active?.userId === userId;
 
@@ -45,12 +58,24 @@ export function CarCard({ view, userId, now }: { view: CarView; userId: string; 
 
       <ParkingLine parking={parking} prefix={status === "in_use" ? "last seen: " : ""} />
 
-      <Action view={view} userId={userId} now={now} />
+      {!mine && <InsuranceNote coverage={coverage} carName={car.nickname} now={now} />}
+
+      <Action view={view} userId={userId} coverage={coverage} now={now} />
     </Card>
   );
 }
 
-function Action({ view, userId, now }: { view: CarView; userId: string; now: Date }) {
+function Action({
+  view,
+  userId,
+  coverage,
+  now,
+}: {
+  view: CarView;
+  userId: string;
+  coverage: Coverage;
+  now: Date;
+}) {
   const { car, status, active, next } = view;
 
   if (status === "in_use") {
@@ -92,10 +117,20 @@ function Action({ view, userId, now }: { view: CarView; userId: string; now: Dat
           {next!.user.name} needs it from {formatWhen(next!.startAt, now)}.
         </p>
       )}
-      <TakeCarButton carId={car.id} />
-      <ButtonLink href={`/request?car=${car.id}`} variant="ghost" className="w-full">
-        Book it for later
-      </ButtonLink>
+      {/* Not insured: the one-tap claim would only be refused, so the way in
+          is a request, which an admin approves with temporary insurance. */}
+      {insuredNow(coverage, now) ? (
+        <>
+          <TakeCarButton carId={car.id} />
+          <ButtonLink href={`/request?car=${car.id}`} variant="ghost" className="w-full">
+            Book it for later
+          </ButtonLink>
+        </>
+      ) : (
+        <ButtonLink href={`/request?car=${car.id}`} variant="secondary" className="w-full">
+          Request this car
+        </ButtonLink>
+      )}
     </div>
   );
 }

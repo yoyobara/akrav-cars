@@ -57,10 +57,15 @@ export function CarForm({ car }: { car?: CarFormValues }) {
     };
 
     try {
-      if (car?.id) await patch(`/api/cars/${car.id}`, body);
-      else await post("/api/cars", body);
-
-      router.push("/admin/cars");
+      if (car?.id) {
+        await patch(`/api/cars/${car.id}`, body);
+        router.push("/admin/cars");
+      } else {
+        // A new car has nobody on its insurance yet, so go straight to the
+        // page where the admin says who can drive it.
+        const { car: created } = await post<{ car: { id: string } }>("/api/cars", body);
+        router.push(`/admin/cars/${created.id}`);
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the car.");

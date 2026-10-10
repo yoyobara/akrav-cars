@@ -2,7 +2,7 @@ import { CarCard } from "@/components/CarCard";
 import { MyRequests } from "@/components/MyRequests";
 import { TodayStrip } from "@/components/TodayStrip";
 import { ButtonLink, Empty } from "@/components/ui";
-import { getGarage, getMyBookings, getSchedule } from "@/lib/queries";
+import { getGarage, getMyBookings, getSchedule, myCoverage } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 
 /** Always current: the whole point is to answer "can I use a car right now". */
@@ -17,6 +17,11 @@ export default async function GaragePage() {
     getSchedule(now, new Date(now.getTime() + 12 * 3_600_000)),
     getMyBookings(user.id, now),
   ]);
+  const coverage = await myCoverage(
+    user.id,
+    garage.map((v) => v.car.id),
+    now,
+  );
 
   if (garage.length === 0) {
     return (
@@ -36,7 +41,13 @@ export default async function GaragePage() {
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2">
         {garage.map((view) => (
-          <CarCard key={view.car.id} view={view} userId={user.id} now={now} />
+          <CarCard
+            key={view.car.id}
+            view={view}
+            userId={user.id}
+            coverage={coverage[view.car.id]}
+            now={now}
+          />
         ))}
       </div>
 

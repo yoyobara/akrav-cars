@@ -1,7 +1,9 @@
+import { InsuranceNote, insuredNow } from "@/components/InsuranceNote";
 import { StartTripButton } from "@/components/StartTripButton";
 import { TakeCarButton } from "@/components/TakeCarButton";
 import { ButtonLink } from "@/components/ui";
 import { START_GRACE_BEFORE_MIN } from "@/lib/constants";
+import type { Coverage } from "@/lib/coverage";
 import type { CarDetail } from "@/lib/queries";
 import { formatWhen } from "@/lib/time";
 
@@ -10,11 +12,14 @@ export function CarActions({
   detail,
   userId,
   isAdmin,
+  coverage,
   now,
 }: {
   detail: CarDetail;
   userId: string;
   isAdmin: boolean;
+  /** The viewer's insurance on this car. */
+  coverage: Coverage;
   now: Date;
 }) {
   const { car, active, upcoming } = detail;
@@ -63,10 +68,19 @@ export function CarActions({
 
   return (
     <div className="space-y-2">
-      <TakeCarButton carId={car.id} />
-      <ButtonLink href={`/request?car=${car.id}`} variant="secondary" className="w-full">
-        Request it for later
-      </ButtonLink>
+      <InsuranceNote coverage={coverage} carName={car.nickname} now={now} />
+      {insuredNow(coverage, now) ? (
+        <>
+          <TakeCarButton carId={car.id} />
+          <ButtonLink href={`/request?car=${car.id}`} variant="secondary" className="w-full">
+            Request it for later
+          </ButtonLink>
+        </>
+      ) : (
+        <ButtonLink href={`/request?car=${car.id}`} className="w-full">
+          Request this car
+        </ButtonLink>
+      )}
       <ButtonLink href={`/cars/${car.id}/park`} variant="ghost" className="w-full">
         Just moved it? Report where it is
       </ButtonLink>

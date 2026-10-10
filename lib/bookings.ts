@@ -1,8 +1,18 @@
 import { and, eq, isNull, lt, gt, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { bookings, cars, parkingReports, users, type Booking, type User } from "@/lib/db/schema";
+import {
+  bookings,
+  cars,
+  parkingReports,
+  temporaryInsurance,
+  users,
+  type Booking,
+  type User,
+} from "@/lib/db/schema";
+import { isCovered } from "@/lib/coverage";
 import { AppError, asAppError, type ErrorCode } from "@/lib/errors";
 import { reverseGeocode } from "@/lib/geocode";
+import { assertInsured, coverageFor } from "@/lib/insurance";
 import type { ParkingInput } from "@/lib/schemas";
 import { isAdmin } from "@/lib/session";
 import { startWindowProblem } from "@/lib/status";
@@ -55,6 +65,11 @@ async function nameOf(tx: Tx, userId: string): Promise<string> {
   return u?.name ?? "someone";
 }
 
+async function carNameOf(tx: Tx, carId: string): Promise<string> {
+  const car = await tx.query.cars.findFirst({ where: eq(cars.id, carId) });
+  return car?.nickname ?? "this car";
+}
+
 export type CreateBookingArgs = {
   carId: string;
   startAt: Date;
@@ -70,6 +85,10 @@ export type CreateBookingArgs = {
  * Open question O1, resolved as option (b): a claim on a car that is free
  * *right now*, with no conflicting approved booking, is auto-approved. Future
  * slots still go to an admin. An admin's own booking is always auto-approved.
+ *
+ * Neither shortcut applies to someone not insured on the car for the window:
+ * a member's request then waits in the inbox, where an admin records the
+ * temporary insurance as they approve it, and an admin is told to add it first.
  */
 export async function createBooking(
   user: User,
@@ -84,7 +103,7 @@ export async function createBooking(
   }
 
   return db.transaction(async (tx) => {
-    await loadCar(tx, args.carId);
+    const car = await loadCar(tx, args.carId);
 
     const startsNow = args.startAt.getTime() <= now.getTime() + NOW_TOLERANCE_MS;
     const active = await activeBooking(tx, args.carId);
@@ -106,7 +125,28 @@ export async function createBooking(
       );
     }
 
-    const autoApproved = isAdmin(user) || (startsNow && !active && !clash);
+    const coverage = await coverageFor(tx, args.carId, user.id, args.startAt);
+    const insured = isCovered(coverage, args.startAt, args.endAt);
+
+    if (!insured && (isAdmin(user) || args.startNow)) {
+      await assertInsured(
+        tx,
+        {
+          carId: args.carId,
+          userId: user.id,
+          from: args.startAt,
+          to: args.endAt,
+          who: "You",
+          carName: car.nickname,
+          then: isAdmin(user)
+            ? "Add temporary insurance on the car's admin page first."
+            : "Request it instead, and an admin can add temporary insurance.",
+        },
+        now,
+      );
+    }
+
+    const autoApproved = insured && (isAdmin(user) || (startsNow && !active && !clash));
 
     if (isAdmin(user) && clash) {
       const owner = await nameOf(tx, clash.userId);
@@ -160,10 +200,16 @@ async function loadPending(tx: Tx, bookingId: string) {
  * The clash check is here for the sentence it produces; `no_overlapping_approved`
  * is what actually guarantees it, and a request that loses a race against a
  * concurrent approval fails on the constraint with the same meaning.
+ *
+ * A requester not insured on the car for the window is refused with
+ * `not_insured`, unless `insure` is set: the admin is saying they have arranged
+ * temporary insurance, and it is recorded for exactly the booking's window in
+ * the same transaction as the approval.
  */
 export async function approveBooking(
   admin: User,
   bookingId: string,
+  opts: { insure?: boolean } = {},
   now = new Date(),
 ): Promise<Booking> {
   return db.transaction(async (tx) => {
@@ -190,6 +236,33 @@ export async function approveBooking(
         `This clashes with ${owner} ${formatTime(clash.startAt)}–${formatTime(clash.endAt)} — reject that one first?`,
       );
     }
+
+    const coverage = await coverageFor(tx, booking.carId, booking.userId, booking.startAt);
+
+    if (opts.insure && !isCovered(coverage, booking.startAt, booking.endAt)) {
+      await tx.insert(temporaryInsurance).values({
+        carId: booking.carId,
+        userId: booking.userId,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        bookingId: booking.id,
+        createdBy: admin.id,
+      });
+    }
+
+    await assertInsured(
+      tx,
+      {
+        carId: booking.carId,
+        userId: booking.userId,
+        from: booking.startAt,
+        to: booking.endAt,
+        who: await nameOf(tx, booking.userId),
+        carName: await carNameOf(tx, booking.carId),
+        then: "Add temporary insurance for it, or reject the request.",
+      },
+      now,
+    );
 
     const [updated] = await tx
       .update(bookings)
@@ -250,7 +323,7 @@ export async function approveMany(
 
   for (const id of ids) {
     try {
-      await approveBooking(admin, id, now);
+      await approveBooking(admin, id, {}, now);
       approved.push(id);
     } catch (err) {
       const app = asAppError(err);
@@ -285,6 +358,22 @@ export async function startBooking(user: User, bookingId: string, now = new Date
 
     const problem = startWindowProblem(booking, now);
     if (problem) throw new AppError("not_startable", problem);
+
+    // Checked again here, not only at approval: insurance can be revoked in
+    // between, and nobody should drive off uninsured because of a stale "yes".
+    await assertInsured(
+      tx,
+      {
+        carId: booking.carId,
+        userId: user.id,
+        from: now,
+        to: booking.endAt > now ? booking.endAt : new Date(now.getTime() + 60_000),
+        who: "You",
+        carName: await carNameOf(tx, booking.carId),
+        then: "Ask an admin to add temporary insurance.",
+      },
+      now,
+    );
 
     const active = await activeBooking(tx, booking.carId);
     if (active) {
