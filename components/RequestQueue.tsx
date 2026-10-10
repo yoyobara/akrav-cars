@@ -18,6 +18,8 @@ export type QueuedRequest = {
   note: string | null;
   createdAt: Date;
   expired: boolean;
+  /** The requester is covered on the car for the whole window. */
+  insured: boolean;
   conflicts: Conflict[];
 };
 
@@ -27,7 +29,7 @@ type BulkResult = {
 };
 
 /** Can be decided in one tap, with nothing standing in the way. */
-const isClean = (r: QueuedRequest) => r.conflicts.length === 0 && !r.expired;
+const isClean = (r: QueuedRequest) => r.conflicts.length === 0 && !r.expired && r.insured;
 
 /** SPEC §5.5 — the queue, newest first, with approve / reject per row. */
 export function RequestQueue({ requests, now }: { requests: QueuedRequest[]; now: Date }) {
@@ -92,7 +94,7 @@ export function RequestQueue({ requests, now }: { requests: QueuedRequest[]; now
           now={now}
           busy={busy === request.id || busy === "bulk"}
           error={rowErrors[request.id]}
-          onApprove={() => decide(request.id, "approve")}
+          onApprove={(insure) => decide(request.id, "approve", { insure })}
           onReject={(reason) => decide(request.id, "reject", { reason: reason || null })}
         />
       ))}
@@ -112,10 +114,12 @@ function Row({
   now: Date;
   busy: boolean;
   error?: string;
-  onApprove: () => void;
+  onApprove: (insure: boolean) => void;
   onReject: (reason: string) => void;
 }) {
   const [rejecting, setRejecting] = useState(false);
+  const [insuring, setInsuring] = useState(false);
+  const when = `${formatWhen(request.startAt, now)} – ${formatTime(request.endAt)}`;
   const [reason, setReason] = useState("");
 
   return (
@@ -126,9 +130,7 @@ function Row({
           <p className="font-semibold">
             {request.userName} · {request.carName}
           </p>
-          <p className="text-sm text-muted">
-            {formatWhen(request.startAt, now)} – {formatTime(request.endAt)}
-          </p>
+          <p className="text-sm text-muted">{when}</p>
           {request.note && <p className="mt-1 text-sm">{request.note}</p>}
           <p className="mt-0.5 text-xs text-muted">
             asked {formatRelative(request.createdAt, now)}
@@ -149,9 +151,31 @@ function Row({
         </p>
       ))}
 
+      {!request.insured && !request.expired && (
+        <p className="rounded-xl bg-reserved/10 px-3 py-2 text-sm text-reserved">
+          {request.userName} is not insured on {request.carName} for this window — it needs
+          temporary insurance before it can be approved.
+        </p>
+      )}
+
       <ErrorNote>{error}</ErrorNote>
 
-      {rejecting ? (
+      {insuring ? (
+        <div className="space-y-2">
+          <p className="text-sm">
+            Only once you have actually arranged temporary insurance for {request.userName} on{" "}
+            {request.carName}, {when}. It is recorded here for exactly that window.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" disabled={busy} onClick={() => setInsuring(false)}>
+              Back
+            </Button>
+            <Button disabled={busy} onClick={() => onApprove(true)}>
+              {busy ? "Saving…" : "Insured — approve"}
+            </Button>
+          </div>
+        </div>
+      ) : rejecting ? (
         <div className="space-y-2">
           <input
             className={inputClass}
@@ -175,9 +199,15 @@ function Row({
           <Button variant="secondary" disabled={busy} onClick={() => setRejecting(true)}>
             Reject
           </Button>
-          <Button disabled={busy || request.expired} onClick={onApprove}>
-            {busy ? "Saving…" : "Approve"}
-          </Button>
+          {request.insured || request.expired ? (
+            <Button disabled={busy || request.expired} onClick={() => onApprove(false)}>
+              {busy ? "Saving…" : "Approve"}
+            </Button>
+          ) : (
+            <Button disabled={busy} onClick={() => setInsuring(true)}>
+              Add insurance &amp; approve
+            </Button>
+          )}
         </div>
       )}
     </Card>

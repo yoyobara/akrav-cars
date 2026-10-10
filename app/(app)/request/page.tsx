@@ -4,7 +4,7 @@ import { RequestForm } from "@/components/RequestForm";
 import { Empty } from "@/components/ui";
 import { db } from "@/lib/db";
 import { cars } from "@/lib/db/schema";
-import { getSchedule } from "@/lib/queries";
+import { getSchedule, myCoverage } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,11 @@ export default async function RequestPage({ searchParams }: PageProps<"/request"
       .orderBy(asc(cars.nickname)),
     getSchedule(now, new Date(now.getTime() + HORIZON_DAYS * 86_400_000)),
   ]);
+  const coverage = await myCoverage(
+    user.id,
+    garage.map((c) => c.id),
+    now,
+  );
 
   return (
     <div className="space-y-4">
@@ -59,6 +64,7 @@ export default async function RequestPage({ searchParams }: PageProps<"/request"
           initialCarId={garage.some((c) => c.id === preselect) ? preselect : garage[0].id}
           isAdmin={user.role === "admin"}
           myId={user.id}
+          coverage={coverage}
           serverNow={now}
         />
       )}

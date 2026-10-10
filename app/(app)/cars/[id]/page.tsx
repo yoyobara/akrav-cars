@@ -5,7 +5,7 @@ import { Map } from "@/components/Map";
 import { NavigateLinks } from "@/components/NavigateLinks";
 import { StatusPill } from "@/components/StatusPill";
 import { Avatar, Card } from "@/components/ui";
-import { getCarDetail } from "@/lib/queries";
+import { getCarDetail, myCoverage } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 import { formatRelative, formatTime, formatWhen } from "@/lib/time";
 
@@ -16,7 +16,10 @@ export default async function CarPage({ params }: PageProps<"/cars/[id]">) {
   const { id } = await params;
   const now = new Date();
 
-  const detail = await getCarDetail(id, now);
+  const [detail, coverage] = await Promise.all([
+    getCarDetail(id, now),
+    myCoverage(user.id, [id], now),
+  ]);
   if (!detail) notFound();
 
   const { car, status, active, parking, upcoming, recentTrips, parkingHistory } = detail;
@@ -81,7 +84,13 @@ export default async function CarPage({ params }: PageProps<"/cars/[id]">) {
         )}
       </section>
 
-      <CarActions detail={detail} userId={user.id} isAdmin={user.role === "admin"} now={now} />
+      <CarActions
+        detail={detail}
+        userId={user.id}
+        isAdmin={user.role === "admin"}
+        coverage={coverage[id]}
+        now={now}
+      />
 
       {upcoming.length > 0 && (
         <section className="space-y-2">

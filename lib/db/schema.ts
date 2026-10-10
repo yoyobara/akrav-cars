@@ -4,6 +4,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -55,6 +56,8 @@ export const cars = pgTable("cars", {
   photoUrl: text("photo_url"),
   notes: text("notes"),
   isActive: boolean("is_active").notNull().default(true),
+  /** The policy covers anyone; otherwise only car_drivers (0003_insurance.sql). */
+  anyDriver: boolean("any_driver").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -120,6 +123,53 @@ export const parkingReports = pgTable(
   (t) => [index("parking_reports_car_created_idx").on(t.carId, t.createdAt)],
 );
 
+/** Drivers named on a car's insurance policy. */
+export const carDrivers = pgTable(
+  "car_drivers",
+  {
+    carId: uuid("car_id")
+      .notNull()
+      .references(() => cars.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    addedBy: uuid("added_by")
+      .notNull()
+      .references(() => users.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.carId, t.userId] })],
+);
+
+/**
+ * Cover for someone not on a car's policy, over a window. Revoked rather than
+ * deleted, so the record of who was insured when survives.
+ */
+export const temporaryInsurance = pgTable(
+  "temporary_insurance",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    carId: uuid("car_id")
+      .notNull()
+      .references(() => cars.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    note: text("note"),
+    /** The request it was added for, when it came from the inbox. */
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedBy: uuid("revoked_by").references(() => users.id),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [index("temporary_insurance_lookup").on(t.carId, t.userId, t.endAt)],
+);
+
 // The two DB invariants from SPEC §7 live in SQL (partial index / exclusion
 // constraint); their names are matched when turning a violation into an error
 // code in lib/errors.ts.
@@ -131,3 +181,4 @@ export type Car = typeof cars.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type ParkingReport = typeof parkingReports.$inferSelect;
 export type NewCar = typeof cars.$inferInsert;
+export type TemporaryInsurance = typeof temporaryInsurance.$inferSelect;

@@ -2,6 +2,8 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 
 import { db } from "@/lib/db";
 import { bookings, cars, parkingReports, users, type Car } from "@/lib/db/schema";
 import { PARKING_HISTORY_LIMIT } from "@/lib/constants";
+import { isCovered, type Coverage } from "@/lib/coverage";
+import { loadCoverage, lookupCoverage } from "@/lib/insurance";
 import { deriveStatus, isActive, STATUS_ORDER, type BookingLike, type CarStatusKind } from "@/lib/status";
 
 export type Person = { id: string; name: string; avatarUrl: string | null };
@@ -232,6 +234,8 @@ export type PendingRequest = BookingView & {
   conflicts: BookingView[];
   /** Its window has already passed, so approving it could do nothing. */
   expired: boolean;
+  /** The requester is covered on the car for the whole window. */
+  insured: boolean;
 };
 
 /**
@@ -257,19 +261,22 @@ export async function getPendingRequests(now = new Date()): Promise<PendingReque
   const from = new Date(Math.min(...rows.map((r) => r.startAt.getTime())));
   const to = new Date(Math.max(...rows.map((r) => r.endAt.getTime())));
 
-  const approved = await db
-    .select(bookingColumns)
-    .from(bookings)
-    .innerJoin(users, eq(users.id, bookings.userId))
-    .where(
-      and(
-        inArray(bookings.carId, carIds),
-        eq(bookings.status, "approved"),
-        lt(bookings.startAt, to),
-        gt(bookings.endAt, from),
-      ),
-    )
-    .orderBy(asc(bookings.startAt));
+  const [approved, coverage] = await Promise.all([
+    db
+      .select(bookingColumns)
+      .from(bookings)
+      .innerJoin(users, eq(users.id, bookings.userId))
+      .where(
+        and(
+          inArray(bookings.carId, carIds),
+          eq(bookings.status, "approved"),
+          lt(bookings.startAt, to),
+          gt(bookings.endAt, from),
+        ),
+      )
+      .orderBy(asc(bookings.startAt)),
+    loadCoverage(db, rows, from),
+  ]);
 
   return rows.map((row) => ({
     ...row,
@@ -277,6 +284,7 @@ export async function getPendingRequests(now = new Date()): Promise<PendingReque
       (a) => a.carId === row.carId && a.startAt < row.endAt && a.endAt > row.startAt,
     ),
     expired: row.endAt <= now,
+    insured: isCovered(lookupCoverage(coverage, row.carId, row.userId), row.startAt, row.endAt),
   }));
 }
 
@@ -323,4 +331,21 @@ export async function getMyBookings(userId: string, now = new Date()): Promise<M
       ),
     )
     .orderBy(asc(bookings.startAt));
+}
+
+/**
+ * One person's insurance on each of the given cars, from `now` on — what the
+ * garage and the request sheet use to tell them before they try.
+ */
+export async function myCoverage(
+  userId: string,
+  carIds: string[],
+  now = new Date(),
+): Promise<Record<string, Coverage>> {
+  const map = await loadCoverage(
+    db,
+    carIds.map((carId) => ({ carId, userId })),
+    now,
+  );
+  return Object.fromEntries(carIds.map((carId) => [carId, lookupCoverage(map, carId, userId)]));
 }

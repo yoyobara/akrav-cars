@@ -39,6 +39,7 @@ export default async function InboxPage() {
             note: r.note,
             createdAt: r.createdAt,
             expired: r.expired,
+            insured: r.insured,
             conflicts: r.conflicts.map((c) => ({
               userName: c.user.name,
               startAt: c.startAt,
