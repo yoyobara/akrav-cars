@@ -64,11 +64,6 @@ export const inviteInput = z.object({
   expiresInDays: z.number().int().min(1).max(90).default(14),
 });
 
-export const claimInviteInput = z.object({
-  name: z.string().trim().min(1).max(60),
-  email: z.email().max(200),
-});
-
 /**
  * `insure`: the admin has arranged temporary insurance for a requester who is
  * not on the car's policy, and it should be recorded for the booking's window.

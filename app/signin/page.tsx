@@ -1,30 +1,27 @@
-import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { Avatar, Card, Empty } from "@/components/ui";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { ErrorNote } from "@/components/ui";
 import { signIn } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Development sign-in: pick who you are. Replaced by Google sign-in
- * (SPEC §9) once OAuth credentials exist — see lib/auth.ts.
- */
-export default async function SignInPage() {
+const ERRORS: Record<string, string> = {
+  AccessDenied:
+    "That Google account is not in the family yet. Ask an admin for an invite link and open it first.",
+};
+
+/** Google sign-in (SPEC §9) — see lib/auth.ts. */
+export default async function SignInPage({ searchParams }: PageProps<"/signin">) {
   if (await getCurrentUser()) redirect("/");
 
-  const family = await db
-    .select({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl })
-    .from(users)
-    .where(eq(users.isActive, true))
-    .orderBy(asc(users.name))
-    .catch(() => []);
+  const { error } = await searchParams;
+  const errorMessage =
+    typeof error === "string" ? (ERRORS[error] ?? "Sign-in did not work. Please try again.") : null;
 
-  async function signInAs(formData: FormData) {
+  async function signInWithGoogle() {
     "use server";
-    await signIn("dev", { email: String(formData.get("email")), redirectTo: "/" });
+    await signIn("google", { redirectTo: "/" });
   }
 
   return (
@@ -34,35 +31,11 @@ export default async function SignInPage() {
         <p className="text-sm text-muted">Who has which car, and where it was left.</p>
       </div>
 
-      {family.length === 0 ? (
-        <Empty title="Nobody here yet">
-          Run <code className="font-mono">npm run db:seed</code> to create the first admin, or open
-          an invite link.
-        </Empty>
-      ) : (
-        <Card className="space-y-2">
-          <p className="text-sm text-muted">Sign in as</p>
-          {family.map((person) => (
-            <form key={person.id} action={signInAs}>
-              <input type="hidden" name="email" value={person.email} />
-              <button
-                type="submit"
-                className="flex w-full items-center gap-3 rounded-xl p-2 text-start active:bg-surface-muted"
-              >
-                <Avatar name={person.name} url={person.avatarUrl} size={36} />
-                <span>
-                  <span className="block font-semibold">{person.name}</span>
-                  <span className="block text-xs text-muted">{person.email}</span>
-                </span>
-              </button>
-            </form>
-          ))}
-        </Card>
-      )}
+      <ErrorNote>{errorMessage}</ErrorNote>
 
-      <p className="text-center text-xs text-muted">
-        Development sign-in — no password. Google sign-in comes with the real deployment.
-      </p>
+      <form action={signInWithGoogle}>
+        <GoogleSignInButton />
+      </form>
     </main>
   );
 }

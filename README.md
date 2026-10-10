@@ -11,14 +11,15 @@ the database.
 ## Running it
 
 ```bash
-cp .env.example .env.local     # paste your Neon connection string, add AUTH_SECRET
+cp .env.example .env.local     # Neon connection string, AUTH_SECRET, Google OAuth client
 npm install
 npm run db:migrate             # creates the schema, including the §7 invariants
-npm run db:seed                # first admin, two example cars
+npm run db:seed                # first admin (SEED_ADMIN_EMAIL)
 npm run dev
 ```
 
-Then open <http://localhost:3000> and pick who you are.
+Then open <http://localhost:3000> and sign in with the admin's Google account. Add cars
+under Admin, and invite everyone else from Settings.
 
 Any Postgres 13+ with `btree_gist` works, not just Neon — for offline work:
 
@@ -32,7 +33,7 @@ docker run -d --name akrav-pg -e POSTGRES_PASSWORD=akrav -e POSTGRES_DB=akrav \
 |---|---|
 | `npm run dev` | development server |
 | `npm run db:migrate` | apply `lib/db/migrations/*.sql` (each runs once) |
-| `npm run db:seed` | create the first admin and example cars, idempotent |
+| `npm run db:seed` | create the first admin, idempotent |
 | `npm run typecheck` / `npm run lint` | |
 
 ## What works
@@ -73,9 +74,10 @@ docker run -d --name akrav-pg -e POSTGRES_PASSWORD=akrav -e POSTGRES_DB=akrav \
 - **Open question O1 → option (b).** A claim on a car that is free right now, with no
   conflicting approved booking, is auto-approved; future slots become `pending` and go
   to the inbox. An admin's own booking is always auto-approved (SPEC §4).
-- **Sign-in is a development bypass** — pick a name, no password. Auth.js is wired up, so
-  Google (SPEC §9) is one provider entry plus credentials away. **Do not deploy this
-  publicly as it stands:** anyone who reaches the sign-in page can become anyone.
+- **Sign-in is Google only** (SPEC §9; the magic-link fallback is not built). Only people
+  already in `users` get in; a new member opens their invite link and taps "Join with
+  Google", and that first sign-in creates them from the Google profile. The OAuth
+  client's redirect URI is `<origin>/api/auth/callback/google`.
 - **The `no_overlapping_approved` constraint covers `approved` only**, where SPEC §7 also
   listed `completed`. A completed booking keeps its *planned* window, so including it
   would keep a car blocked until 20:00 after a trip that actually ended at 18:30, and a
