@@ -27,40 +27,45 @@ export function CarCard({
   const mine = active?.userId === userId;
 
   return (
-    <Card className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <Link href={`/cars/${car.id}`} className="text-lg font-bold">
-          {car.nickname}
-        </Link>
-        <StatusPill
-          status={status}
-          label={
-            status === "in_use"
-              ? mine
-                ? "You have it"
-                : `${active!.user.name} has it`
-              : undefined
-          }
-        />
+    <Card className="flex flex-col gap-4">
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <Link href={`/cars/${car.id}`} className="text-lg font-bold">
+            {car.nickname}
+          </Link>
+          <StatusPill
+            status={status}
+            label={
+              status === "in_use"
+                ? mine
+                  ? "You have it"
+                  : `${active!.user.name} has it`
+                : undefined
+            }
+          />
+        </div>
+
+        {active && (
+          <p className="mt-0.5 text-sm text-muted">
+            back ~{formatWhen(active.endAt, now)} ({formatRelative(active.endAt, now)})
+          </p>
+        )}
+
+        {!active && next && (
+          <p className="mt-0.5 text-sm text-reserved">
+            {next.userId === userId ? "Yours" : `${next.user.name}’s`} from {formatWhen(next.startAt, now)}
+          </p>
+        )}
       </div>
-
-      {active && (
-        <p className="text-sm text-muted">
-          back ~{formatWhen(active.endAt, now)} ({formatRelative(active.endAt, now)})
-        </p>
-      )}
-
-      {!active && next && (
-        <p className="text-sm text-reserved">
-          {next.userId === userId ? "Yours" : `${next.user.name}’s`} from {formatWhen(next.startAt, now)}
-        </p>
-      )}
 
       <ParkingLine parking={parking} prefix={status === "in_use" ? "last seen: " : ""} />
 
       {!mine && <InsuranceNote coverage={coverage} carName={car.nickname} now={now} />}
 
-      <Action view={view} userId={userId} coverage={coverage} now={now} />
+      {/* Pinned to the bottom so buttons line up across cards in the grid. */}
+      <div className="mt-auto">
+        <Action view={view} userId={userId} coverage={coverage} now={now} />
+      </div>
     </Card>
   );
 }
@@ -107,16 +112,11 @@ function Action({
     next.startAt.getTime() - START_GRACE_BEFORE_MIN * 60_000 <= now.getTime();
   if (startable) return <StartTripButton bookingId={next!.id} />;
 
-  // Reserved for someone else: still takeable for a trip that fits in the gap.
-  // A preset that would run into their booking is refused by the server with a
-  // sentence naming who it clashes with.
+  // Reserved for someone else: still takeable for a trip that fits in the gap
+  // (the header already says from when). A preset that would run into their
+  // booking is refused by the server with a sentence naming who it clashes with.
   return (
     <div className="space-y-2">
-      {status === "reserved" && (
-        <p className="text-sm text-muted">
-          {next!.user.name} needs it from {formatWhen(next!.startAt, now)}.
-        </p>
-      )}
       {/* Not insured: the one-tap claim would only be refused, so the way in
           is a request, which an admin approves with temporary insurance. */}
       {insuredNow(coverage, now) ? (
